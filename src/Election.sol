@@ -61,7 +61,7 @@ contract Election is Initializable {
     }
 
     struct Candidate {
-        uint256 candidateID; // remove candidateId its not needed
+        uint256 candidateID;
         string name;
         string description;
     }
@@ -125,7 +125,6 @@ contract Election is Initializable {
     ///////////////////////////
 
     function initialize(
-        // #PC - Why isnt it constructor? also checkout import {Initializable}
         ElectionInfo memory _electionInfo,
         Candidate[] memory _candidates,
         uint256 _resultType,
@@ -136,7 +135,6 @@ contract Election is Initializable {
     ) external initializer {
         s_electionInfo = _electionInfo;
         for (uint256 i = 0; i < _candidates.length; i++) {
-            // add _candidates to s_candidates array
             s_candidates.push(
                 Candidate(i, _candidates[i].name, _candidates[i].description)
             );
@@ -179,7 +177,6 @@ contract Election is Initializable {
     // }
 
     function addCandidate(
-        // #PC - 3 why is a candidate already pushed when initialized
         string calldata _name,
         string calldata _description
     ) external onlyOwner electionStarted {
@@ -212,7 +209,7 @@ contract Election is Initializable {
 
         (bool success, bytes memory allVotes) = address(ballot).staticcall(
             payload
-        ); // #PC - 5. staticcall, check this out
+        );
         if (!success) revert GetVotes();
 
         uint256[] memory _winners = resultCalculator.getResults(
