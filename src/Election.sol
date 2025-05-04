@@ -28,7 +28,7 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 
 /**
  * @title Election Contract
- * @author
+ * @author KartikC137
  *
  * This Contract Manages each Election created by the ElectionFactory.
  * It handles the voting process, candidate management, and result calculation.
@@ -41,23 +41,30 @@ contract Election is Initializable {
     // Errors      ///
     //////////////////
 
-    error OwnerPermissioned();
+    error NotOwner();
     error AlreadyVoted();
-    error GetVotes();
-    error ElectionIncomplete();
+    error VotesUnavailable();
+    error TotalVotesExceedNumberOfCandidates(
+        uint256 candidateLength,
+        uint256 totalVotes
+    );
     error ElectionInactive();
+    error ElectionActive();
+    error ElectionEnded();
     error InvalidCandidateID();
+    error InvalidCandidatesLength();
+    error CandidateAlreadyRemoved(uint256 candidateId);
+    error ResultsHaveAlreadyBeenDeclared(uint256[] winners);
 
     ////////////////////////////
     // Types Declarations    ///
     ////////////////////////////
 
     struct ElectionInfo {
-        uint256 startTime;
-        uint256 endTime;
+        uint64 startTime;
+        uint64 endTime;
         string name;
         string description;
-        // Election type: 0 for invite based 1 for open
     }
 
     struct Candidate {
@@ -86,6 +93,7 @@ contract Election is Initializable {
     uint256 public s_resultType;
     uint256 public s_totalVotes;
 
+    bool private s_electionEnded;
     bool public s_resultsDeclared;
     bool private s_ballotInitialized;
 
@@ -93,26 +101,35 @@ contract Election is Initializable {
     // Events  ///
     //////////////
 
+    event AddCandidate(string indexed name, string indexed description);
+    event RemoveCandidate(uint256 indexed candidateId);
+    event CastVote(address indexed voter);
+    event CalculateFinalResult();
+    event EndElection();
+
     //////////////////
     // Modifiers   ///
     //////////////////
 
     modifier onlyOwner() {
-        if (msg.sender != s_owner) revert OwnerPermissioned();
+        if (msg.sender != s_owner) revert NotOwner();
         _;
     }
 
-    modifier electionInactive() {
-        if (
-            block.timestamp < s_electionInfo.startTime ||
-            block.timestamp > s_electionInfo.endTime
-        ) revert ElectionInactive();
-        _;
-    }
-
-    modifier electionStarted() {
-        if (block.timestamp > s_electionInfo.startTime)
+    modifier electionInactiveCheck() {
+        if (block.timestamp < s_electionInfo.startTime)
             revert ElectionInactive();
+        _;
+    }
+
+    modifier electionStartedCheck() {
+        if (block.timestamp > s_electionInfo.startTime) revert ElectionActive();
+        _;
+    }
+
+    modifier electionEndedCheck() {
+        if ((block.timestamp > s_electionInfo.endTime) || s_electionEnded)
+            revert ElectionEnded();
         _;
     }
 
@@ -134,7 +151,11 @@ contract Election is Initializable {
         address _resultCalculator
     ) external initializer {
         s_electionInfo = _electionInfo;
-        for (uint256 i = 0; i < _candidates.length; i++) {
+        uint256 _totalCandidates = _candidates.length;
+
+        if (_totalCandidates < 2) revert InvalidCandidatesLength();
+
+        for (uint256 i = 0; i < _totalCandidates; i++) {
             s_candidates.push(
                 Candidate(i, _candidates[i].name, _candidates[i].description)
             );
@@ -147,12 +168,17 @@ contract Election is Initializable {
         resultCalculator = IResultCalculator(_resultCalculator);
     }
 
-    function userVote(uint256[] memory voteArr) external electionInactive {
+    function userVote(
+        uint256[] memory voteArr
+    ) external electionInactiveCheck electionEndedCheck {
         if (s_userVoted[msg.sender]) revert AlreadyVoted();
         if (s_ballotInitialized == false) {
             ballot.init(s_candidates.length); // #PC - 1. Iballot contract, communicating with Ballot contract
             s_ballotInitialized = true;
         }
+
+        emit CastVote(msg.sender);
+
         ballot.vote(voteArr); // #PC - 1
         s_userVoted[msg.sender] = true;
         s_totalVotes++;
@@ -170,7 +196,7 @@ contract Election is Initializable {
     //         ballot.init(s_candidates.length);
     //         s_ballotInitialized = true;
     //     }
-    //     if (msg.sender != s_factoryContract) revert OwnerPermissioned();
+    //     if (msg.sender != s_factoryContract) revert NotOwner();
     //     s_userVoted[user] = true;
     //     ballot.vote(_voteArr);
     //     s_totalVotes++;
@@ -179,7 +205,9 @@ contract Election is Initializable {
     function addCandidate(
         string calldata _name,
         string calldata _description
-    ) external onlyOwner electionStarted {
+    ) external onlyOwner electionStartedCheck electionEndedCheck {
+        emit AddCandidate(_name, _description);
+
         Candidate memory newCandidate = Candidate(
             s_candidates.length,
             _name,
@@ -188,36 +216,89 @@ contract Election is Initializable {
         s_candidates.push(newCandidate);
     }
 
-    function removeCandidate(uint256 _id) external onlyOwner electionStarted {
-        if (_id >= s_candidates.length) revert InvalidCandidateID(); // #PC better use try catch to trigger this error during all kind of exceptions.
-        s_candidates[_id] = s_candidates[s_candidates.length - 1]; // Replace with last element. #PC 4 ISSUE: Changes order of s_candidates. Solution add bool isActive to the candidate struct and not actually delete the user
+    function removeCandidate(
+        uint256 _id
+    ) external onlyOwner electionStartedCheck electionEndedCheck {
+        uint256 totalCandidates = s_candidates.length;
+
+        if (_id >= totalCandidates) revert InvalidCandidateID();
+        if (totalCandidates <= 2) revert InvalidCandidatesLength();
+
+        emit RemoveCandidate(_id);
+
+        for (uint256 i = _id; i < totalCandidates - 1; i++) {
+            s_candidates[i] = s_candidates[i + 1];
+            s_candidates[i].candidateID = i;
+        }
+
         s_candidates.pop();
     }
 
-    //////////////////////////////////////////////////
-    // Public & External Functions View Functions  ///
-    //////////////////////////////////////////////////
-
-    function getCandidateList() external view returns (Candidate[] memory) {
-        return s_candidates;
+    function endElection() external onlyOwner {
+        emit EndElection();
+        _calculateResult();
+        _endElection();
     }
 
-    function getResult() external {
-        if (block.timestamp < s_electionInfo.endTime)
-            revert ElectionIncomplete();
-        bytes memory payload = abi.encodeWithSignature("getVotes()");
+    function calculateFinalResult() external electionEndedCheck {
+        if (s_resultsDeclared) revert ResultsHaveAlreadyBeenDeclared(s_winners);
 
-        (bool success, bytes memory allVotes) = address(ballot).staticcall(
+        emit CalculateFinalResult();
+
+        _calculateResult();
+    }
+
+    ///////////////////////////////////
+    // Private & Internal Functions ///
+    ///////////////////////////////////
+
+    function _getTotalVotes() internal view returns (bytes memory) {
+        //Checks
+        if (s_candidates.length > s_totalVotes)
+            revert TotalVotesExceedNumberOfCandidates(
+                s_candidates.length,
+                s_totalVotes
+            );
+
+        bytes memory payload = abi.encodeWithSignature("getVotes()"); //#PC why bytes?
+
+        (bool success, bytes memory totalVotes) = address(ballot).staticcall(
             payload
         );
-        if (!success) revert GetVotes();
+        if (!success) revert VotesUnavailable();
 
+        return totalVotes;
+    }
+
+    function _calculateResult() internal {
+        bytes memory totalVotes = _getTotalVotes();
         uint256[] memory _winners = resultCalculator.getResults(
-            allVotes,
+            totalVotes,
             s_resultType
         );
         s_winners = _winners;
         s_resultsDeclared = true;
+    }
+
+    function _endElection() internal {
+        s_electionEnded = true;
+        _calculateResult();
+    }
+
+    ////////////////////////////////////////
+    // Public & External View Functions  ///
+    ////////////////////////////////////////
+
+    function getElectionStatus() external view returns (bool) {
+        return s_electionEnded;
+    }
+
+    function getElectionWinners() external view returns (uint256[] memory) {
+        return s_winners;
+    }
+
+    function getCandidateList() external view returns (Candidate[] memory) {
+        return s_candidates;
     }
 
     function getWinners() external view returns (uint256[] memory) {

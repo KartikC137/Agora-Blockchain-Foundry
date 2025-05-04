@@ -26,7 +26,7 @@ contract GeneralBallot is IBallot {
         candidateVotes = new uint[](_totalCandidate);
     }
 
-    //just a sigle vote in arr [1]
+    //just a single vote in arr [1]
     function vote(uint256[] memory _votes) external onlyOwner {
         if (_votes.length != 1) revert InvalidVoteArrayLength();
         checkValidVotes(_votes[0]);

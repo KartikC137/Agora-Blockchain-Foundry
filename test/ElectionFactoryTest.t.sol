@@ -39,6 +39,36 @@ contract ElectionFactoryTest is Test {
         electionFactory = deployer.run();
     }
 
+    function createGeneralElectionFromUSER1(
+        uint256 noOfCandidates
+    ) internal returns (address) {
+        // Create a new election with the specified number of candidates
+
+        uint256 resultType = 1;
+        uint256 ballotType = 1;
+
+        if (noOfCandidates == 1) {
+            candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
+        } else if (noOfCandidates == 2) {
+            candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
+            candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
+        } else {
+            revert(
+                "Invalid number of candidates for createElection Test function"
+            );
+        }
+
+        vm.prank(USER1);
+        address electionAddress = electionFactory.createElection(
+            electionInfo,
+            candidates,
+            ballotType,
+            resultType
+        );
+
+        return electionAddress;
+    }
+
     //////////////////
     // Owner Tests ///
     //////////////////
@@ -54,21 +84,8 @@ contract ElectionFactoryTest is Test {
     function testCreatesElectionAndUpdatesElectionsElectionOwnersUserElectionsAndElectionCount()
         public
     {
-        candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
-        candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
-
-        uint256 resultType = 0;
-        uint256 ballotType = 1;
-
         uint256 electionCountBefore = 0;
-
-        vm.prank(USER1);
-        address election1 = electionFactory.createElection(
-            electionInfo,
-            candidates,
-            ballotType,
-            resultType
-        );
+        address election1 = createGeneralElectionFromUSER1(2);
         electionAddresses.push(election1);
 
         uint256 electionCountAfter = 1;
@@ -85,23 +102,12 @@ contract ElectionFactoryTest is Test {
     function testUsersCanCreateMultipleElectionsAndUpdatesUserElections()
         public
     {
-        candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
-        candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
-
-        uint256 resultType = 0;
-        uint256 ballotType = 1;
-
-        //election 1
-        vm.prank(USER1);
-        address election1 = electionFactory.createElection(
-            electionInfo,
-            candidates,
-            ballotType,
-            resultType
-        );
+        address election1 = createGeneralElectionFromUSER1(2);
         electionAddresses.push(election1);
 
         //election 2
+        uint256 ballotType = 1;
+        uint256 resultType = 1;
         vm.prank(USER1);
         address election2 = electionFactory.createElection(
             electionInfo,
@@ -156,79 +162,44 @@ contract ElectionFactoryTest is Test {
     // Delete Election Tests ///
     ////////////////////////////
 
-    function testDeletesElectionAndEmitsEventSuccessfully() public {
-        candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
-        candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
+    // function testDeletesElectionAndEmitsEventSuccessfully() public {
+    //     createGeneralElectionFromUSER1(2);
 
-        uint256 resultType = 0;
-        uint256 ballotType = 1;
+    //     assertEq(electionFactory.getElectionCount(), 1);
 
-        vm.prank(USER1);
-        electionFactory.createElection(
-            electionInfo,
-            candidates,
-            ballotType,
-            resultType
-        );
+    //     vm.expectEmit(true, true, false, false);
+    //     emit ElectionDeleted(0, USER1);
 
-        assertEq(electionFactory.getElectionCount(), 1);
+    //     vm.prank(USER1);
+    //     electionFactory.deleteElection(0);
 
-        vm.expectEmit(true, true, false, false);
-        emit ElectionDeleted(0, USER1);
+    //     assertEq(electionFactory.getElectionCount(), 0);
+    // }
 
-        vm.prank(USER1);
-        electionFactory.deleteElection(0);
+    // function testRevertsIfNonOwnerTriesToDelete() public {
+    //     createGeneralElectionFromUSER1(2);
 
-        assertEq(electionFactory.getElectionCount(), 0);
-    }
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             ElectionFactory.NotOwnerOrInvalidElectionID.selector,
+    //             USER1,
+    //             0
+    //         )
+    //     );
+    //     electionFactory.deleteElection(0);
+    // }
 
-    function testRevertsIfNonOwnerTriesToDelete() public {
-        candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
-        candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
+    // function testRevertsIfInvalidIndex() public {
+    //     createGeneralElectionFromUSER1(2);
 
-        uint256 resultType = 0;
-        uint256 ballotType = 1;
-
-        vm.prank(USER1);
-        electionFactory.createElection(
-            electionInfo,
-            candidates,
-            ballotType,
-            resultType
-        );
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ElectionFactory.NotOwnerOrInvalidElectionID.selector,
-                msg.sender,
-                1
-            )
-        );
-        electionFactory.deleteElection(1);
-    }
-
-    function testRevertsIfInvalidIndex() public {
-        candidates.push(Election.Candidate(1, "Alice", "Candidate 1"));
-        candidates.push(Election.Candidate(2, "Bob", "Candidate 2"));
-
-        uint256 resultType = 0;
-        uint256 ballotType = 1;
-
-        vm.prank(USER1);
-        electionFactory.createElection(
-            electionInfo,
-            candidates,
-            ballotType,
-            resultType
-        );
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ElectionFactory.NotOwnerOrInvalidElectionID.selector,
-                USER1,
-                2
-            )
-        );
-        vm.prank(USER1);
-        electionFactory.deleteElection(2);
-    }
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             ElectionFactory.NotOwnerOrInvalidElectionID.selector,
+    //             address(0),
+    //             2
+    //         )
+    //     );
+    //     vm.prank(USER1);
+    //     electionFactory.deleteElection(2);
+    // }
 }

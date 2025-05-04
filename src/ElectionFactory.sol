@@ -7,7 +7,7 @@ import {ResultCalculator} from "./resultCalculators/ResultCalculator.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 /**
- * @title Election Factory Contract
+ * @title Election Factory Contract v1.0
  * @author
  *
  * This Contract Handles Creation and Deletion of Elections.
@@ -61,6 +61,8 @@ contract ElectionFactory {
         uint256 indexed electionInfo,
         address indexed deletedBy
     );
+
+    event EndElection(uint256 electionId);
 
     //////////////////
     // Modifiers   ///
@@ -122,23 +124,47 @@ contract ElectionFactory {
         return electionAddress;
     }
 
-    function deleteElection(uint256 _electionId) external {
+    /**
+     *
+     * @notice This function is a bit problmatic because, and will be worked on while setting up tableland DB contract(hence skipped for now)
+     * 1. Should there be a option to delete the election anyways?.
+     * 2. very hard to make it gas efficient and keep the order of elections after deletion.
+     * I will fix it later, these are my options:
+     *  1. I will delete from this contract, to save space, but the history will be stored in tableland database contract.
+     *  2. Find an intuitive way to delete the elections, as well as keeping the order of elections as well as considering scalability.
+     *  3. Deleting an election = marking the election as "deleted" or "inactive" and/or deleting from this contract lists.
+     */
+    // function deleteElection(uint256 _electionId) external {
+    //     if (s_electionOwner[_electionId] != msg.sender)
+    //         revert NotOwnerOrInvalidElectionID(
+    //             s_electionOwner[_electionId],
+    //             _electionId
+    //         );
+
+    //     uint256 lastIndex = s_openBasedElections.length - 1;
+    //     if (_electionId != lastIndex) {
+    //         s_openBasedElections[_electionId] = s_openBasedElections[lastIndex];
+    //         s_electionOwner[_electionId] = s_electionOwner[lastIndex];
+    //     }
+
+    //     emit ElectionDeleted(_electionId, msg.sender);
+    //     s_openBasedElections.pop();
+    //     delete s_electionOwner[lastIndex];
+    //     s_electionCount--;
+    // }
+
+    //under construction
+    function endElection(uint256 _electionId) external {
         if (s_electionOwner[_electionId] != msg.sender)
             revert NotOwnerOrInvalidElectionID(
                 s_electionOwner[_electionId],
                 _electionId
             );
 
-        uint256 lastIndex = s_openBasedElections.length - 1;
-        if (_electionId != lastIndex) {
-            s_openBasedElections[_electionId] = s_openBasedElections[lastIndex];
-            s_electionOwner[_electionId] = s_electionOwner[lastIndex];
-        }
+        emit EndElection(_electionId);
 
-        emit ElectionDeleted(_electionId, msg.sender);
-        s_openBasedElections.pop();
-        delete s_electionOwner[lastIndex];
-        s_electionCount--;
+        Election election = Election(s_openBasedElections[_electionId]);
+        election.endElection();
     }
 
     //////////////////////////////////////////////////
